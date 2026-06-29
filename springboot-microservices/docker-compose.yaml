@@ -1,0 +1,95 @@
+# use `docker-compose up` to launch multiple container at once locally.
+version: '3.7'
+
+# each container which we launch is a service in docker-compose.
+services:
+  currency-exchange:
+    image: od/ms-currency-exchange-service:0.0.1-SNAPSHOT
+    # set memory limit for this container.
+    mem_limit: 700m 
+    ports:
+      - "8000:8000"
+    networks:
+      - currency-network
+    # as this container depends on eureka server as well.
+    depends_on:
+      - naming-server
+      - rabbitmq
+    # properties below are configured in application.properties using localhost.
+    # we use alias to communicate within networks. ex: http://naming-server:8761
+    environment:
+      EUREKA.CLIENT.SERVICEURL.DEFAULTZONE: http://naming-server:8761/eureka
+      SPRING.ZIPKIN.BASEURL: http://zipkin-server:9411/
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_ZIPKIN_SENDER_TYPE: rabbit
+
+  currency-conversion:
+    image: od/ms-currency-conversion-service:0.0.1-SNAPSHOT
+    mem_limit: 700m
+    ports:
+      - "8100:8100"
+    networks:
+      - currency-network
+    depends_on:
+      - naming-server
+      - rabbitmq
+    environment:
+      EUREKA.CLIENT.SERVICEURL.DEFAULTZONE: http://naming-server:8761/eureka
+      SPRING.ZIPKIN.BASEURL: http://zipkin-server:9411/
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_ZIPKIN_SENDER_TYPE: rabbit
+
+  api-gateway:
+    image: od/ms-api-gateway:0.0.1-SNAPSHOT
+    mem_limit: 700m
+    ports:
+      - "8765:8765"
+    networks:
+      - currency-network
+    depends_on:
+      - naming-server
+      - rabbitmq
+    environment:
+      EUREKA.CLIENT.SERVICEURL.DEFAULTZONE: http://naming-server:8761/eureka
+      SPRING.ZIPKIN.BASEURL: http://zipkin-server:9411/
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_ZIPKIN_SENDER_TYPE: rabbit
+
+  naming-server:
+    image: od/ms-naming-server:0.0.1-SNAPSHOT
+    # set memory limit for this container
+    mem_limit: 700m 
+    ports:
+      - "8761:8761"
+    networks:
+      - currency-network
+
+  zipkin-server:
+    image: openzipkin/zipkin:2.23
+    mem_limit: 300m
+    ports:
+      - "9411:9411"
+    networks:
+      - currency-network
+    environment:
+      RABBIT_URI: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - rabbitmq
+    restart: always # restart if there is a problem starting up.
+
+  # rmq dependency is added in all the services.
+  rabbitmq:
+    image: rabbitmq:3.8.12-management
+    mem_limit: 300m
+    ports:
+      - "5672:5672" # management port.
+      - "15672:15672" # curreny network port.
+    networks:
+      - currency-network
+
+# networks are used to club internal ports of containers.
+networks:
+  currency-network:
